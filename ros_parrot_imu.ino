@@ -18,6 +18,16 @@ rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
 
+// network setting variables
+// Agent IP should be changed once used on real hardware to match network
+const String AGENT_IP = "192.168.20.4";
+const String CLIENT_IP = "192.168.20.10";
+const int AGENT_PORT = 8888;
+IPAddress client_ip;
+IPAddress agent_ip;
+//check if this can also be done based on the teensy ID
+const byte MAC[] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
+
 #define CS_PIN 2 // Which pin you connect CS to. Used only when "USE_SPI" is defined
 #define LED_PIN 13
 
@@ -50,7 +60,12 @@ ICM_20948_SPI myICM;
 
 void setup()
 {
-  set_microros_transports();
+  client_ip.fromString(CLIENT_IP);
+  agent_ip.fromString(AGENT_IP);
+
+  // set ethernet as the ros transport
+  set_microros_native_ethernet_udp_transports(MAC, client_ip, agent_ip, AGENT_PORT);
+
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
