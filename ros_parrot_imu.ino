@@ -79,13 +79,13 @@ void setup()
   // create init_options
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
-  RCCHECK(rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support));
+  RCCHECK(rclc_node_init_default(&node, "teensy_imu_node", "", &support));
 
   RCCHECK(rclc_publisher_init_default(
       &publisher,
       &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
-      "micro_ros_arduino_node_publisher"));
+      "teensy_imu_data"));
 
   bool initialized = false;
   while (!initialized)
