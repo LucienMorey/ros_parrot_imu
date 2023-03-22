@@ -18,7 +18,17 @@ rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
 
-#define CS_PIN 2 // Which pin you connect CS to. Used only when "USE_SPI" is defined
+// network setting variables
+// Agent IP should be changed once used on real hardware to match network
+const String AGENT_IP = "192.168.20.4";
+const String CLIENT_IP = "192.168.20.10";
+const int AGENT_PORT = 8888;
+IPAddress client_ip;
+IPAddress agent_ip;
+//check if this can also be done based on the teensy ID
+const byte MAC[] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
+
+#define CS_PIN 0 // Which pin you connect CS to. Used only when "USE_SPI" is defined
 #define LED_PIN 13
 
 #define RCCHECK(fn)              \
@@ -50,27 +60,32 @@ ICM_20948_SPI myICM;
 
 void setup()
 {
-  set_microros_transports();
+  client_ip.fromString(CLIENT_IP);
+  agent_ip.fromString(AGENT_IP);
+  Serial.begin(9600);
+
+  // set ethernet as the ros transport
+  set_microros_native_ethernet_udp_transports(MAC, client_ip, agent_ip, AGENT_PORT);
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
   delay(2000);
 
-  SPI.begin();
+  SPI1.begin();
 
   allocator = rcl_get_default_allocator();
 
   // create init_options
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
-  RCCHECK(rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support));
+  RCCHECK(rclc_node_init_default(&node, "teensy_imu_node", "", &support));
 
   RCCHECK(rclc_publisher_init_default(
       &publisher,
       &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
-      "micro_ros_arduino_node_publisher"));
+      "teensy_imu_data"));
 
   bool initialized = false;
   while (!initialized)
@@ -78,11 +93,12 @@ void setup()
 
     // Initialize the ICM-20948
     // If the DMP is enabled, .begin performs a minimal startup. We need to configure the sample mode etc. manually.
-    myICM.begin(CS_PIN, SPI);
+    myICM.begin(CS_PIN, SPI1);
 
     if (myICM.status != ICM_20948_Stat_Ok)
     {
       delay(500);
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     }
     else
     {
@@ -126,14 +142,12 @@ void setup()
 
   if (success)
   {
-    // TODO re-enable after switching to udp transport
-    // Serial.println(F("DMP enabled!"));
+    Serial.println(F("DMP enabled!"));
   }
   else
   {
-    // TODO re-enable after switching to udp transport
-    // Serial.println(F("Enable DMP failed!"));
-    // Serial.println(F("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h..."));
+    Serial.println(F("Enable DMP failed!"));
+    Serial.println(F("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h..."));
     while (1)
       error_loop();
   }
