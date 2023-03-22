@@ -28,7 +28,7 @@ IPAddress agent_ip;
 //check if this can also be done based on the teensy ID
 const byte MAC[] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 
-#define CS_PIN 2 // Which pin you connect CS to. Used only when "USE_SPI" is defined
+#define CS_PIN 0 // Which pin you connect CS to. Used only when "USE_SPI" is defined
 #define LED_PIN 13
 
 #define RCCHECK(fn)              \
@@ -66,13 +66,12 @@ void setup()
   // set ethernet as the ros transport
   set_microros_native_ethernet_udp_transports(MAC, client_ip, agent_ip, AGENT_PORT);
 
-
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
   delay(2000);
 
-  SPI.begin();
+  SPI1.begin();
 
   allocator = rcl_get_default_allocator();
 
@@ -93,7 +92,7 @@ void setup()
 
     // Initialize the ICM-20948
     // If the DMP is enabled, .begin performs a minimal startup. We need to configure the sample mode etc. manually.
-    myICM.begin(CS_PIN, SPI);
+    myICM.begin(CS_PIN, SPI1);
 
     if (myICM.status != ICM_20948_Stat_Ok)
     {
