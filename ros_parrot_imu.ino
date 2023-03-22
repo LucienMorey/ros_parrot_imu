@@ -98,6 +98,7 @@ void setup()
     if (myICM.status != ICM_20948_Stat_Ok)
     {
       delay(500);
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     }
     else
     {
