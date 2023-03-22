@@ -62,6 +62,7 @@ void setup()
 {
   client_ip.fromString(CLIENT_IP);
   agent_ip.fromString(AGENT_IP);
+  Serial.begin(9600);
 
   // set ethernet as the ros transport
   set_microros_native_ethernet_udp_transports(MAC, client_ip, agent_ip, AGENT_PORT);
@@ -140,14 +141,12 @@ void setup()
 
   if (success)
   {
-    // TODO re-enable after switching to udp transport
-    // Serial.println(F("DMP enabled!"));
+    Serial.println(F("DMP enabled!"));
   }
   else
   {
-    // TODO re-enable after switching to udp transport
-    // Serial.println(F("Enable DMP failed!"));
-    // Serial.println(F("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h..."));
+    Serial.println(F("Enable DMP failed!"));
+    Serial.println(F("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h..."));
     while (1)
       error_loop();
   }
