@@ -20,8 +20,8 @@ rcl_node_t node;
 
 // network setting variables
 // Agent IP should be changed once used on real hardware to match network
-const String AGENT_IP = "192.168.20.4";
-const String CLIENT_IP = "192.168.20.10";
+const String AGENT_IP = "192.168.10.40";
+const String CLIENT_IP = "192.168.10.10";
 const int AGENT_PORT = 8888;
 IPAddress client_ip;
 IPAddress agent_ip;
