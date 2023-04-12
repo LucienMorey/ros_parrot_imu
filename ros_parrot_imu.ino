@@ -167,17 +167,17 @@ bool configure_imu(void)
 
   // Configure the output data rate for each of the sensors
   // this should configure them to each run at the max speed
-  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Quat9, 0) == ICM_20948_Stat_Ok))
+  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Quat9, 0) != ICM_20948_Stat_Ok))
   {
     success = false;
     Serial.printf("Failure to configure orientation output data rate\n");
   }
-  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 0) == ICM_20948_Stat_Ok))
+  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 0) != ICM_20948_Stat_Ok))
   {
     success = false;
     Serial.printf("Failure to configure accelerometer output data rate\n");
   }
-  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 0) == ICM_20948_Stat_Ok))
+  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 0) != ICM_20948_Stat_Ok))
   {
     success = false;
     Serial.printf("Failure to configure gyroscope output data rate\n");
