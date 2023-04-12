@@ -58,19 +58,27 @@ void error_loop()
 
 ICM_20948_SPI myICM;
 
-void setup() {}
-
-bool init_node_interfaces(void)
+void setup()
 {
-
-  bool success = true;
-
   client_ip.fromString(CLIENT_IP);
   agent_ip.fromString(AGENT_IP);
   // set ethernet as the ros transport
   set_microros_native_ethernet_udp_transports(MAC, client_ip, agent_ip, AGENT_PORT);
 
   delay(2000);
+
+  Serial.begin(9600);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
+
+  SPI1.begin();
+}
+
+bool init_node_interfaces(void)
+{
+
+  bool success = true;
 
   allocator = rcl_get_default_allocator();
 
@@ -218,13 +226,6 @@ bool configure_imu(void)
 
 void loop()
 {
-
-  Serial.begin(9600);
-
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);
-
-  SPI1.begin();
 
   bool success = true;
   success = init_node_interfaces();
