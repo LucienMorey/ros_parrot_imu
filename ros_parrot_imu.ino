@@ -20,12 +20,12 @@ rcl_node_t node;
 
 // network setting variables
 // Agent IP should be changed once used on real hardware to match network
-const String AGENT_IP = "192.168.20.4";
-const String CLIENT_IP = "192.168.20.10";
+const String AGENT_IP = "192.168.10.40";
+const String CLIENT_IP = "192.168.10.10";
 const int AGENT_PORT = 8888;
 IPAddress client_ip;
 IPAddress agent_ip;
-//check if this can also be done based on the teensy ID
+// check if this can also be done based on the teensy ID
 const byte MAC[] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 
 #define CS_PIN 0 // Which pin you connect CS to. Used only when "USE_SPI" is defined
@@ -62,31 +62,63 @@ void setup()
 {
   client_ip.fromString(CLIENT_IP);
   agent_ip.fromString(AGENT_IP);
-  Serial.begin(9600);
-
   // set ethernet as the ros transport
   set_microros_native_ethernet_udp_transports(MAC, client_ip, agent_ip, AGENT_PORT);
+
+  delay(2000);
+
+  Serial.begin(9600);
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
-  delay(2000);
-
   SPI1.begin();
+}
+
+bool init_node_interfaces(void)
+{
+
+  bool success = true;
 
   allocator = rcl_get_default_allocator();
 
   // create init_options
-  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK)
+  {
+    success = false;
+    Serial.printf("Failed to init ROS2 support\n");
+  }
 
-  RCCHECK(rclc_node_init_default(&node, "teensy_imu_node", "", &support));
+  if ((success == true) && (rclc_node_init_default(&node, "teensy_imu_node", "", &support)))
+  {
+    success = false;
+    Serial.printf("Failed to init ROS2 node\n");
+  }
 
-  RCCHECK(rclc_publisher_init_default(
-      &publisher,
-      &node,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
-      "teensy_imu_data"));
+  if ((success == true) && (rclc_publisher_init_default(
+                               &publisher,
+                               &node,
+                               ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
+                               "teensy_imu_data")))
+  {
+    success = false;
+    Serial.printf("Failed to init ROS2 publisher\n");
+  }
 
+  memset(&msg, 0, sizeof(sensor_msgs__msg__Imu));
+
+  return success;
+}
+
+void destroy_node_interfaces(void)
+{
+  rcl_publisher_fini(&publisher, &node);
+  rcl_node_fini(&node);
+  rclc_support_fini(&support);
+}
+
+bool configure_imu(void)
+{
   bool initialized = false;
   while (!initialized)
   {
@@ -108,88 +140,143 @@ void setup()
 
   bool success = true;
 
-  success &= (myICM.initializeDMP() == ICM_20948_Stat_Ok);
+  if (myICM.initializeDMP() != ICM_20948_Stat_Ok)
+  {
+    success = false;
+    Serial.printf("Failure to initialise IMU DMP\n");
+  }
 
-  success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_ORIENTATION) == ICM_20948_Stat_Ok);
-  success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_GYROSCOPE) == ICM_20948_Stat_Ok);
-  success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_ACCELEROMETER) == ICM_20948_Stat_Ok);
+  // Enable the required sensors
+  if ((success == true) && (myICM.enableDMPSensor(INV_ICM20948_SENSOR_ORIENTATION) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to enable orientation sensor\n");
+  }
 
-  // Configuring DMP to output data at multiple ODRs:
-  // DMP is capable of outputting multiple sensor data at different rates to FIFO.
-  // Setting value can be calculated as follows:
-  // Value = (DMP running rate / ODR ) - 1
-  // E.g. For a 5Hz ODR rate when DMP is running at 55Hz, value = (55/5) - 1 = 10.
-  success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Quat9, 0) == ICM_20948_Stat_Ok); // Set to the maximum
-  success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 0) == ICM_20948_Stat_Ok); // Set to the maximum
-  success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 0) == ICM_20948_Stat_Ok);  // Set to the maximum
+  if ((success == true) && (myICM.enableDMPSensor(INV_ICM20948_SENSOR_GYROSCOPE) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to enable gyroscope sensor\n");
+  }
+
+  if ((success == true) && (myICM.enableDMPSensor(INV_ICM20948_SENSOR_ACCELEROMETER) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to enable accelerometer sensor\n");
+  }
+
+  // Configure the output data rate for each of the sensors
+  // this should configure them to each run at the max speed
+  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Quat9, 0) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to configure orientation output data rate\n");
+  }
+  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 0) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to configure accelerometer output data rate\n");
+  }
+  if ((success == true) && (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 0) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to configure gyroscope output data rate\n");
+  }
 
   ICM_20948_fss_t myFSS;
   myFSS.a = gpm8;
   myFSS.g = dps250;
-  myICM.setFullScale((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), myFSS);
+
+  if ((success == true) && (myICM.setFullScale((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), myFSS) != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to set scale for Accelerometer and Gyroscope\n");
+  }
 
   // Enable the FIFO
-  success &= (myICM.enableFIFO() == ICM_20948_Stat_Ok);
+  if ((success == true) && (myICM.enableFIFO() != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to enable FIFO\n");
+  }
 
   // Enable the DMP
-  success &= (myICM.enableDMP() == ICM_20948_Stat_Ok);
+  if ((success == true) && (myICM.enableDMP() != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to enable DMP\n");
+  }
 
   // Reset DMP
-  success &= (myICM.resetDMP() == ICM_20948_Stat_Ok);
+  if ((success == true) && (myICM.resetDMP() != ICM_20948_Stat_Ok))
+  {
+    success = false;
+    Serial.printf("Failure to reset DMP\n");
+  }
 
   // Reset FIFO
-  success &= (myICM.resetFIFO() == ICM_20948_Stat_Ok);
-
-  if (success)
+  if ((success == true) && (myICM.resetFIFO() != ICM_20948_Stat_Ok))
   {
-    Serial.println(F("DMP enabled!"));
-  }
-  else
-  {
-    Serial.println(F("Enable DMP failed!"));
-    Serial.println(F("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h..."));
-    while (1)
-      error_loop();
+    success = false;
+    Serial.printf("Failure to reset FIFO\n");
   }
 
-  memset(&msg, 0, sizeof(sensor_msgs__msg__Imu));
+  return success;
 }
 
 void loop()
 {
 
-  icm_20948_DMP_data_t data;
-  myICM.readDMPdataFromFIFO(&data);
+  bool success = true;
+  success = init_node_interfaces();
 
-  if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail))
+  if ((success == true) && (!configure_imu()))
   {
-    if ((data.header & DMP_header_bitmap_Quat9) > 0) // We have asked for orientation data so we should receive Quat9
-    {
-      // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
-      // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
-      // The quaternion data is scaled by 2^30.
-      // Scale to +/- 1
+    success = false;
+    Serial.printf("Failure to configure the imu\n");
+  }
 
-      msg.orientation.x = ((double)data.Quat9.Data.Q1) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
-      msg.orientation.y = ((double)data.Quat9.Data.Q2) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
-      msg.orientation.z = ((double)data.Quat9.Data.Q3) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
-      msg.orientation.w = sqrt(1.0 - ((msg.orientation.x * msg.orientation.x) + (msg.orientation.y * msg.orientation.y) + (msg.orientation.z * msg.orientation.z)));
+  while (success == true)
+  {
+
+    icm_20948_DMP_data_t data;
+    myICM.readDMPdataFromFIFO(&data);
+
+    if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail))
+    {
+      if ((data.header & DMP_header_bitmap_Quat9) > 0) // We have asked for orientation data so we should receive Quat9
+      {
+        // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
+        // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
+        // The quaternion data is scaled by 2^30.
+        // Scale to +/- 1
+
+        msg.orientation.x = ((double)data.Quat9.Data.Q1) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
+        msg.orientation.y = ((double)data.Quat9.Data.Q2) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
+        msg.orientation.z = ((double)data.Quat9.Data.Q3) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
+        msg.orientation.w = sqrt(1.0 - ((msg.orientation.x * msg.orientation.x) + (msg.orientation.y * msg.orientation.y) + (msg.orientation.z * msg.orientation.z)));
+      }
+
+      if ((data.header & DMP_header_bitmap_Accel) > 0) // We have asked for acceleration so we should receive raw accel
+      {
+        msg.linear_acceleration.x = (float)data.Raw_Accel.Data.X * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+        msg.linear_acceleration.y = (float)data.Raw_Accel.Data.Y * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+        msg.linear_acceleration.z = (float)data.Raw_Accel.Data.Z * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+      }
+
+      if ((data.header & DMP_header_bitmap_Gyro) > 0) // We have asked angular velocity so we should receive raw gyro
+      {
+        msg.angular_velocity.x = (float)data.Raw_Gyro.Data.X * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+        msg.angular_velocity.y = (float)data.Raw_Gyro.Data.Y * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+        msg.angular_velocity.z = (float)data.Raw_Gyro.Data.Z * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+      }
     }
 
-    if ((data.header & DMP_header_bitmap_Accel) > 0) // We have asked for acceleration so we should receive raw accel
+    if (rcl_publish(&publisher, &msg, NULL) != RCL_RET_OK)
     {
-      msg.linear_acceleration.x = (float)data.Raw_Accel.Data.X * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
-      msg.linear_acceleration.y = (float)data.Raw_Accel.Data.Y * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
-      msg.linear_acceleration.z = (float)data.Raw_Accel.Data.Z * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
-    }
-
-    if ((data.header & DMP_header_bitmap_Gyro) > 0) // We have asked angular velocity so we should receive raw gyro
-    {
-      msg.angular_velocity.x = (float)data.Raw_Gyro.Data.X * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
-      msg.angular_velocity.y = (float)data.Raw_Gyro.Data.Y * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
-      msg.angular_velocity.z = (float)data.Raw_Gyro.Data.Z * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+      success = false;
     }
   }
 
-  RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+  destroy_node_interfaces();
 }
