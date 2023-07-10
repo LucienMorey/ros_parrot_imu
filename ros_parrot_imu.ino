@@ -28,6 +28,8 @@ IPAddress agent_ip;
 // check if this can also be done based on the teensy ID
 const byte MAC[] = {0x02, 0x47, 0x00, 0x00, 0x00, 0x01};
 
+const double PUBLISH_FREQUENCY_HZ = 1000.0;
+
 #define CS_PIN 0 // Which pin you connect CS to. Used only when "USE_SPI" is defined
 #define LED_PIN 13
 
@@ -236,45 +238,52 @@ void loop()
     Serial.printf("Failure to configure the imu\n");
   }
 
+  uint64_t last_micros = micros();
+  uint64_t current_micros = micros();
+
   while (success == true)
   {
-
-    icm_20948_DMP_data_t data;
-    myICM.readDMPdataFromFIFO(&data);
-
-    if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail))
+    current_micros = micros();
+    if ((current_micros - last_micros) > (1 / PUBLISH_FREQUENCY_HZ * 1e6))
     {
-      if ((data.header & DMP_header_bitmap_Quat9) > 0) // We have asked for orientation data so we should receive Quat9
-      {
-        // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
-        // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
-        // The quaternion data is scaled by 2^30.
-        // Scale to +/- 1
+      icm_20948_DMP_data_t data;
+      myICM.readDMPdataFromFIFO(&data);
 
-        msg.orientation.x = ((double)data.Quat9.Data.Q1) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
-        msg.orientation.y = ((double)data.Quat9.Data.Q2) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
-        msg.orientation.z = ((double)data.Quat9.Data.Q3) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
-        msg.orientation.w = sqrt(1.0 - ((msg.orientation.x * msg.orientation.x) + (msg.orientation.y * msg.orientation.y) + (msg.orientation.z * msg.orientation.z)));
+      if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail))
+      {
+        if ((data.header & DMP_header_bitmap_Quat9) > 0) // We have asked for orientation data so we should receive Quat9
+        {
+          // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
+          // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
+          // The quaternion data is scaled by 2^30.
+          // Scale to +/- 1
+
+          msg.orientation.x = ((double)data.Quat9.Data.Q1) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
+          msg.orientation.y = ((double)data.Quat9.Data.Q2) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
+          msg.orientation.z = ((double)data.Quat9.Data.Q3) * ORIENTATION_CONVERSION_FACTORS::QUATERNION_9_DOF; // Convert to double. Divide by 2^30
+          msg.orientation.w = sqrt(1.0 - ((msg.orientation.x * msg.orientation.x) + (msg.orientation.y * msg.orientation.y) + (msg.orientation.z * msg.orientation.z)));
+        }
+
+        if ((data.header & DMP_header_bitmap_Accel) > 0) // We have asked for acceleration so we should receive raw accel
+        {
+          msg.linear_acceleration.x = (float)data.Raw_Accel.Data.X * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+          msg.linear_acceleration.y = (float)data.Raw_Accel.Data.Y * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+          msg.linear_acceleration.z = (float)data.Raw_Accel.Data.Z * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+        }
+
+        if ((data.header & DMP_header_bitmap_Gyro) > 0) // We have asked angular velocity so we should receive raw gyro
+        {
+          msg.angular_velocity.x = (float)data.Raw_Gyro.Data.X * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+          msg.angular_velocity.y = (float)data.Raw_Gyro.Data.Y * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+          msg.angular_velocity.z = (float)data.Raw_Gyro.Data.Z * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
+        }
       }
 
-      if ((data.header & DMP_header_bitmap_Accel) > 0) // We have asked for acceleration so we should receive raw accel
+      if (rcl_publish(&publisher, &msg, NULL) != RCL_RET_OK)
       {
-        msg.linear_acceleration.x = (float)data.Raw_Accel.Data.X * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
-        msg.linear_acceleration.y = (float)data.Raw_Accel.Data.Y * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
-        msg.linear_acceleration.z = (float)data.Raw_Accel.Data.Z * ACCEL_CONVERSION_FACTORS::ACEEL_8G * GRAVITY;
+        success = false;
       }
-
-      if ((data.header & DMP_header_bitmap_Gyro) > 0) // We have asked angular velocity so we should receive raw gyro
-      {
-        msg.angular_velocity.x = (float)data.Raw_Gyro.Data.X * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
-        msg.angular_velocity.y = (float)data.Raw_Gyro.Data.Y * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
-        msg.angular_velocity.z = (float)data.Raw_Gyro.Data.Z * GYRO_CONVERSION_FACTORS::GYRO_250_DPS * PI / 180.0;
-      }
-    }
-
-    if (rcl_publish(&publisher, &msg, NULL) != RCL_RET_OK)
-    {
-      success = false;
+      last_micros = micros();
     }
   }
 
